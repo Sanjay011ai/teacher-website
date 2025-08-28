@@ -24,6 +24,22 @@ interface MCQQuestion {
   created_at?: string
 }
 
+interface MCQAttempt {
+  id: string
+  topic: string
+  difficulty: string
+  total_questions: number
+  correct_answers: number
+  score_percentage: number
+  created_at: string
+  questions_data: {
+    question: string
+    options: string[]
+    correct_answer: number
+    user_answer: number
+  }[]
+}
+
 export default function MCQGeneratorPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,7 +49,9 @@ export default function MCQGeneratorPage() {
   const [numQuestions, setNumQuestions] = useState("5")
   const [generatedQuestions, setGeneratedQuestions] = useState<MCQQuestion[]>([])
   const [previousQuestions, setPreviousQuestions] = useState<MCQQuestion[]>([])
+  const [quizAttempts, setQuizAttempts] = useState<MCQAttempt[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [historyView, setHistoryView] = useState<"questions" | "attempts">("attempts")
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: number }>({})
   const [showResults, setShowResults] = useState(false)
 
@@ -43,6 +61,7 @@ export default function MCQGeneratorPage() {
   useEffect(() => {
     checkUser()
     fetchPreviousQuestions()
+    fetchQuizAttempts()
   }, [])
 
   const checkUser = async () => {
@@ -66,6 +85,18 @@ export default function MCQGeneratorPage() {
 
     if (!error && data) {
       setPreviousQuestions(data)
+    }
+  }
+
+  const fetchQuizAttempts = async () => {
+    const { data, error } = await supabase
+      .from("mcq_attempts")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20)
+
+    if (!error && data) {
+      setQuizAttempts(data)
     }
   }
 
@@ -123,8 +154,38 @@ export default function MCQGeneratorPage() {
     }))
   }
 
-  const checkAnswers = () => {
+  const checkAnswers = async () => {
     setShowResults(true)
+
+    // Calculate score
+    const { correct, total } = getScore()
+    const scorePercentage = Math.round((correct / total) * 100)
+
+    // Prepare questions data with user answers
+    const questionsData = generatedQuestions.map((question, index) => ({
+      question: question.question,
+      options: question.options,
+      correct_answer: question.correct_answer,
+      user_answer: selectedAnswers[index] ?? -1,
+    }))
+
+    // Save quiz attempt to database
+    try {
+      await supabase.from("mcq_attempts").insert({
+        user_id: user?.id,
+        topic,
+        difficulty,
+        total_questions: total,
+        correct_answers: correct,
+        score_percentage: scorePercentage,
+        questions_data: questionsData,
+      })
+
+      // Refresh attempts history
+      await fetchQuizAttempts()
+    } catch (error) {
+      console.error("Error saving quiz attempt:", error)
+    }
   }
 
   const getScore = () => {
@@ -249,23 +310,66 @@ export default function MCQGeneratorPage() {
             {showHistory && (
               <Card className="mt-6">
                 <CardHeader>
-                  <CardTitle className="text-lg">Previous MCQs</CardTitle>
-                  <CardDescription>Your recently generated questions</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">History</CardTitle>
+                      <CardDescription>Your quiz attempts and generated questions</CardDescription>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant={historyView === "attempts" ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setHistoryView("attempts")}
+                      >
+                        Attempts
+                      </Button>
+                      <Button
+                        variant={historyView === "questions" ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setHistoryView("questions")}
+                      >
+                        Questions
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {previousQuestions.map((mcq) => (
-                      <div key={mcq.id} className="p-3 border rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <Badge variant="secondary">{mcq.difficulty}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(mcq.created_at!).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="font-medium text-sm">{mcq.topic}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{mcq.question.substring(0, 80)}...</p>
-                      </div>
-                    ))}
+                    {historyView === "attempts"
+                      ? quizAttempts.map((attempt) => (
+                          <div key={attempt.id} className="p-3 border rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <Badge variant="secondary">{attempt.difficulty}</Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(attempt.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="font-medium text-sm">{attempt.topic}</p>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-xs text-muted-foreground">
+                                {attempt.correct_answers}/{attempt.total_questions} questions
+                              </span>
+                              <Badge
+                                variant={attempt.score_percentage >= 70 ? "default" : "destructive"}
+                                className="text-xs"
+                              >
+                                {attempt.score_percentage}%
+                              </Badge>
+                            </div>
+                          </div>
+                        ))
+                      : previousQuestions.map((mcq) => (
+                          <div key={mcq.id} className="p-3 border rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <Badge variant="secondary">{mcq.difficulty}</Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(mcq.created_at!).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="font-medium text-sm">{mcq.topic}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{mcq.question.substring(0, 80)}...</p>
+                          </div>
+                        ))}
                   </div>
                 </CardContent>
               </Card>
@@ -294,12 +398,25 @@ export default function MCQGeneratorPage() {
                   {showResults && (
                     <div className="mt-4 p-4 bg-primary/10 rounded-lg">
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-primary">
+                        <div className="text-3xl font-bold text-primary mb-2">
                           {getScore().correct}/{getScore().total}
                         </div>
+                        <div className="text-lg font-semibold mb-1">
+                          {Math.round((getScore().correct / getScore().total) * 100)}%
+                        </div>
                         <p className="text-sm text-muted-foreground">
-                          Score: {Math.round((getScore().correct / getScore().total) * 100)}%
+                          {getScore().correct === getScore().total
+                            ? "Perfect score! 🎉"
+                            : getScore().correct / getScore().total >= 0.7
+                              ? "Great job! 👏"
+                              : "Keep practicing! 💪"}
                         </p>
+                        <Badge
+                          variant={getScore().correct / getScore().total >= 0.7 ? "default" : "secondary"}
+                          className="mt-2"
+                        >
+                          Quiz Completed & Saved
+                        </Badge>
                       </div>
                     </div>
                   )}

@@ -1,35 +1,33 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { GoogleGenerativeAI } from "@google/generative-ai"
 
-async function callOllama(messages: Array<{ role: string; content: string }>) {
-  const response = await fetch("http://localhost:11434/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "mistral",
-      messages: messages,
-      stream: false,
-      options: {
-        temperature: 0.7,
-        num_predict: 2000,
-      },
-    }),
-  })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyAvFsPD4ghOc-igDqyBecZTM5DtK3Jf3xY")
 
-  if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.status}`)
+async function callGemini(messages: Array<{ role: string; content: string }>) {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+
+    // Convert messages to Gemini format
+    const lastMessage = messages[messages.length - 1]
+    const systemMessage = messages.find((m) => m.role === "system")
+
+    // Combine system prompt with user message
+    const prompt = systemMessage ? `${systemMessage.content}\n\nUser: ${lastMessage.content}` : lastMessage.content
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    return response.text()
+  } catch (error) {
+    console.error("Gemini API error:", error)
+    throw new Error(`Gemini API error: ${error}`)
   }
-
-  const data = await response.json()
-  return data.message?.content || ""
 }
 
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: authError,
@@ -45,7 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Create prompt for Ollama
+    // Create prompt for Gemini
     const prompt = `Generate ${numQuestions} multiple-choice questions about "${topic}" at ${difficulty} difficulty level.
 
 Requirements:
@@ -70,7 +68,7 @@ Topic: ${topic}
 Difficulty: ${difficulty}
 Number of questions: ${numQuestions}`
 
-    const responseText = await callOllama([
+    const responseText = await callGemini([
       {
         role: "system",
         content:

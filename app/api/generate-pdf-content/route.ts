@@ -1,29 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { GoogleGenerativeAI } from "@google/generative-ai"
 
-async function callOllama(messages: Array<{ role: string; content: string }>) {
-  const response = await fetch("http://localhost:11434/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "mistral",
-      messages: messages,
-      stream: false,
-      options: {
-        temperature: 0.7,
-        num_predict: 3000,
-      },
-    }),
-  })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyAvFsPD4ghOc-igDqyBecZTM5DtK3Jf3xY")
 
-  if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.status}`)
+async function callGemini(messages: Array<{ role: string; content: string }>) {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+
+    // Convert messages to Gemini format
+    const lastMessage = messages[messages.length - 1]
+    const systemMessage = messages.find((m) => m.role === "system")
+
+    // Combine system prompt with user message
+    const prompt = systemMessage ? `${systemMessage.content}\n\nUser: ${lastMessage.content}` : lastMessage.content
+
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    return response.text()
+  } catch (error) {
+    console.error("Gemini API error:", error)
+    throw new Error(`Gemini API error: ${error}`)
   }
-
-  const data = await response.json()
-  return data.message?.content || ""
 }
 
 export async function POST(request: NextRequest) {
@@ -85,9 +83,9 @@ Format your response as JSON with this exact structure:
 
 Topic: ${topic}`
 
-    console.log("[v0] PDF Content API: Calling Ollama API")
+    console.log("[v0] PDF Content API: Calling Gemini API")
 
-    const responseText = await callOllama([
+    const responseText = await callGemini([
       {
         role: "system",
         content:
@@ -99,7 +97,7 @@ Topic: ${topic}`
       },
     ])
 
-    console.log("[v0] PDF Content API: Ollama API response received")
+    console.log("[v0] PDF Content API: Gemini API response received")
 
     if (!responseText) {
       console.log("[v0] PDF Content API: No response from AI")
