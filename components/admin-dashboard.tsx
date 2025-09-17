@@ -33,6 +33,9 @@ import {
 } from "recharts"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
+import { AnalyticsDashboard } from "@/components/analytics-dashboard"
+import { StudentManagement } from "@/components/student-management"
+import { MCQManagement } from "@/components/mcq-management"
 
 interface AdminDashboardProps {
   user: User
@@ -63,6 +66,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     userActivity: [],
   })
   const [loading, setLoading] = useState(true)
+  const [mcqAttempts, setMcqAttempts] = useState<any[]>([])
   const router = useRouter()
   const supabase = createClient()
 
@@ -73,11 +77,12 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
   const fetchDashboardData = async () => {
     try {
       // Fetch all statistics
-      const [usersResult, mcqResult, pdfResult, chatResult] = await Promise.all([
+      const [usersResult, mcqResult, pdfResult, chatResult, attemptsResult] = await Promise.all([
         supabase.from("users").select("*"),
         supabase.from("mcq_questions").select("*"),
         supabase.from("pdf_generations").select("*"),
         supabase.from("chat_messages").select("*"),
+        supabase.from("mcq_attempts").select("*"),
       ])
 
       // Process MCQ data by topic
@@ -92,22 +97,27 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
         count,
       }))
 
-      // Process user activity data
       const userActivity = usersResult.data?.map((user: any) => {
         const userMcqs = mcqResult.data?.filter((mcq: any) => mcq.user_id === user.id).length || 0
         const userPdfs = pdfResult.data?.filter((pdf: any) => pdf.user_id === user.id).length || 0
         const userChats = chatResult.data?.filter((chat: any) => chat.user_id === user.id).length || 0
+        const userAttempts = attemptsResult.data?.filter((attempt: any) => attempt.user_id === user.id).length || 0
+        const avgScore =
+          attemptsResult.data
+            ?.filter((attempt: any) => attempt.user_id === user.id)
+            .reduce((sum: number, attempt: any) => sum + attempt.score_percentage, 0) / (userAttempts || 1)
 
         return {
           name: user.full_name || user.email,
           mcqs: userMcqs,
           pdfs: userPdfs,
           chats: userChats,
+          attempts: userAttempts,
+          avgScore: userAttempts > 0 ? avgScore.toFixed(1) : 0,
           total: userMcqs + userPdfs + userChats,
         }
       })
 
-      // Recent activity (last 10 items)
       const allActivity = [
         ...(mcqResult.data?.map((item: any) => ({
           type: "MCQ",
@@ -127,9 +137,16 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
           message: item.message.substring(0, 50) + "...",
           created_at: item.created_at,
         })) || []),
+        ...(attemptsResult.data?.map((item: any) => ({
+          type: "Quiz",
+          user: item.user_id,
+          topic: item.topic,
+          score: item.score_percentage,
+          created_at: item.created_at,
+        })) || []),
       ]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10)
+        .slice(0, 15)
 
       setStats({
         totalUsers: usersResult.data?.length || 0,
@@ -141,6 +158,8 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
         mcqByTopic: mcqChartData,
         userActivity: userActivity || [],
       })
+
+      setMcqAttempts(attemptsResult.data || [])
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
     } finally {
@@ -187,7 +206,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
 
       <div className="container mx-auto px-6 py-8">
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -207,6 +226,17 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
             <CardContent>
               <div className="text-2xl font-bold text-primary">{stats.totalMcqQuestions}</div>
               <p className="text-xs text-muted-foreground">Generated questions</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Quiz Attempts</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">{mcqAttempts.length}</div>
+              <p className="text-xs text-muted-foreground">Total quiz attempts</p>
             </CardContent>
           </Card>
 
@@ -235,10 +265,13 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="quizzes">Quiz Results</TabsTrigger>
+            <TabsTrigger value="students">Students</TabsTrigger>
+            <TabsTrigger value="mcq">MCQ Bank</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
 
@@ -336,6 +369,8 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                               <div>MCQs: {userStats?.mcqs || 0}</div>
                               <div>PDFs: {userStats?.pdfs || 0}</div>
                               <div>Chats: {userStats?.chats || 0}</div>
+                              <div>Quizzes: {userStats?.attempts || 0}</div>
+                              <div className="text-primary font-medium">Avg Score: {userStats?.avgScore || 0}%</div>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -348,71 +383,103 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
+            <AnalyticsDashboard />
+          </TabsContent>
+
+          <TabsContent value="quizzes" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Platform Usage Statistics</CardTitle>
-                  <CardDescription>Overall platform engagement metrics</CardDescription>
+                  <CardTitle>Quiz Performance Overview</CardTitle>
+                  <CardDescription>Average scores and completion rates</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>Average MCQs per User</span>
-                    <span className="font-bold">
-                      {stats.totalUsers > 0 ? (stats.totalMcqQuestions / stats.totalUsers).toFixed(1) : 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Average PDFs per User</span>
-                    <span className="font-bold">
-                      {stats.totalUsers > 0 ? (stats.totalPdfGenerations / stats.totalUsers).toFixed(1) : 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Average Chats per User</span>
-                    <span className="font-bold">
-                      {stats.totalUsers > 0 ? (stats.totalChatMessages / stats.totalUsers).toFixed(1) : 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Most Active User</span>
-                    <span className="font-bold">
-                      {stats.userActivity.length > 0 ? stats.userActivity[0]?.name : "N/A"}
-                    </span>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span>Average Score</span>
+                      <span className="font-bold text-primary">
+                        {mcqAttempts.length > 0
+                          ? (
+                              mcqAttempts.reduce((sum, attempt) => sum + attempt.score_percentage, 0) /
+                              mcqAttempts.length
+                            ).toFixed(1)
+                          : 0}
+                        %
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Total Attempts</span>
+                      <span className="font-bold">{mcqAttempts.length}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Passing Rate (≥70%)</span>
+                      <span className="font-bold text-green-600">
+                        {mcqAttempts.length > 0
+                          ? (
+                              (mcqAttempts.filter((attempt) => attempt.score_percentage >= 70).length /
+                                mcqAttempts.length) *
+                              100
+                            ).toFixed(1)
+                          : 0}
+                        %
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Most Popular Topic</span>
+                      <span className="font-bold">
+                        {mcqAttempts.length > 0
+                          ? Object.entries(
+                              mcqAttempts.reduce((acc: any, attempt) => {
+                                acc[attempt.topic] = (acc[attempt.topic] || 0) + 1
+                                return acc
+                              }, {}),
+                            ).sort(([, a], [, b]) => (b as number) - (a as number))[0]?.[0] || "N/A"
+                          : "N/A"}
+                      </span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Content Distribution</CardTitle>
-                  <CardDescription>Breakdown of generated content</CardDescription>
+                  <CardTitle>Recent Quiz Attempts</CardTitle>
+                  <CardDescription>Latest quiz completions</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: "MCQ Questions", value: stats.totalMcqQuestions },
-                          { name: "PDF Documents", value: stats.totalPdfGenerations },
-                          { name: "Chat Messages", value: stats.totalChatMessages },
-                        ]}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={60}
-                        fill="#8884d8"
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        <Cell fill="#15803d" />
-                        <Cell fill="#84cc16" />
-                        <Cell fill="#059669" />
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {mcqAttempts.slice(0, 10).map((attempt, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div>
+                          <p className="font-medium">{attempt.topic}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {attempt.correct_answers}/{attempt.total_questions} correct
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div
+                            className={`font-bold ${attempt.score_percentage >= 70 ? "text-green-600" : "text-red-600"}`}
+                          >
+                            {attempt.score_percentage.toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(attempt.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="students" className="space-y-6">
+            <StudentManagement />
+          </TabsContent>
+
+          <TabsContent value="mcq" className="space-y-6">
+            <MCQManagement />
           </TabsContent>
 
           <TabsContent value="activity" className="space-y-6">
@@ -432,12 +499,25 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                         {activity.type === "MCQ" && <Brain className="h-4 w-4 text-primary" />}
                         {activity.type === "PDF" && <FileText className="h-4 w-4 text-primary" />}
                         {activity.type === "Chat" && <MessageSquare className="h-4 w-4 text-primary" />}
+                        {activity.type === "Quiz" && <BarChart3 className="h-4 w-4 text-primary" />}
                         <div>
                           <p className="font-medium">
-                            {activity.type} {activity.type === "Chat" ? "Message" : "Generated"}
+                            {activity.type}{" "}
+                            {activity.type === "Chat"
+                              ? "Message"
+                              : activity.type === "Quiz"
+                                ? "Completed"
+                                : "Generated"}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {activity.topic || activity.message || "No details"}
+                            {activity.type === "Quiz" && activity.score && (
+                              <span
+                                className={`ml-2 font-medium ${activity.score >= 70 ? "text-green-600" : "text-red-600"}`}
+                              >
+                                ({activity.score.toFixed(1)}%)
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
