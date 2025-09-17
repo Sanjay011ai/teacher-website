@@ -131,3 +131,85 @@ export async function getCurrentUser() {
     return null
   }
 }
+
+export async function signUpAction(formData: FormData) {
+  const email = formData.get("email") as string
+  const password = formData.get("password") as string
+  const fullName = formData.get("fullName") as string
+
+  if (!email || !password || !fullName) {
+    return { error: "All fields are required" }
+  }
+
+  if (password.length < 6) {
+    return { error: "Password must be at least 6 characters long" }
+  }
+
+  if (isV0Environment()) {
+    console.log("[v0] Using mock sign-up for v0 environment")
+
+    // Check if user already exists in mock data
+    const existingUser = mockUsers.find((u) => u.email === email)
+    if (existingUser) {
+      return { error: "User already exists with this email" }
+    }
+
+    // Create new mock user
+    const newUser = {
+      id: String(mockUsers.length + 1),
+      email,
+      password,
+      role: "user",
+      name: fullName,
+    }
+
+    // In a real app, we'd save to database
+    // For mock, we'll just simulate success
+    console.log("[v0] Mock sign-up successful for:", email)
+
+    // Set mock session cookie for immediate login
+    const cookieStore = await cookies()
+    cookieStore.set(
+      "mock-auth-user",
+      JSON.stringify({
+        id: newUser.id,
+        email: newUser.email,
+        role: newUser.role,
+        name: newUser.name,
+      }),
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      },
+    )
+
+    redirect("/dashboard")
+  }
+
+  try {
+    const supabase = await createClient()
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo:
+          process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`,
+        data: {
+          full_name: fullName,
+        },
+      },
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    redirect("/auth/sign-up-success")
+  } catch (error) {
+    console.error("[v0] Supabase sign-up failed:", error)
+    return { error: "Sign-up service unavailable. Please try again later." }
+  }
+}
