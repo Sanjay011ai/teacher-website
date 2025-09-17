@@ -26,11 +26,15 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
     try {
+      console.log("[v0] Creating Supabase client...")
+      const supabase = createClient()
+      console.log("[v0] Supabase client created successfully")
+
+      console.log("[v0] Attempting to sign in with email:", email)
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -38,10 +42,21 @@ export default function LoginPage() {
           emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/dashboard`,
         },
       })
-      if (error) throw error
+
+      if (error) {
+        console.error("[v0] Supabase auth error:", error)
+        throw error
+      }
+
+      console.log("[v0] Sign in successful, redirecting to dashboard...")
       router.push("/dashboard")
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred")
+      console.error("[v0] Login error:", error)
+      if (error instanceof Error) {
+        setError(`Login failed: ${error.message}`)
+      } else {
+        setError("An unexpected error occurred during login")
+      }
     } finally {
       setIsLoading(false)
     }
