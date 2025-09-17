@@ -76,7 +76,7 @@ export default function HomePage() {
         <div className="text-center">
           <Card className="max-w-md mx-auto bg-primary/5 border-primary/20">
             <CardHeader>
-              <CardTitle className="text-lg text-primary">Admin Access</CardTitle>
+              <CardTitle className="text-lg text-foreground">Admin Access</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">For administrators, use the quick admin login with:</p>

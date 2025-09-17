@@ -3,10 +3,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { GraduationCap } from "lucide-react"
+import { GraduationCap, Info } from "lucide-react"
 import { loginAction } from "../actions"
 
+const isV0Environment = () => {
+  return (
+    process.env.NODE_ENV === "development" &&
+    (process.env.VERCEL_URL?.includes("vusercontent.net") || process.env.VERCEL_URL?.includes("preview-"))
+  )
+}
+
 export default function LoginPage() {
+  const showMockCredentials = isV0Environment()
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
@@ -18,6 +27,27 @@ export default function LoginPage() {
             </div>
             <p className="text-muted-foreground">Empowering education with artificial intelligence</p>
           </div>
+
+          {showMockCredentials && (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="pt-4">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-2">Demo Credentials Available:</p>
+                    <div className="space-y-1 text-xs">
+                      <p>
+                        <strong>Admin:</strong> admin@teacher.ai / admin123
+                      </p>
+                      <p>
+                        <strong>Teacher:</strong> teacher@school.edu / teacher123
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="shadow-lg">
             <CardHeader>
@@ -35,7 +65,7 @@ export default function LoginPage() {
                       type="email"
                       placeholder="Enter your email"
                       required
-                      defaultValue="admin@teachai.com"
+                      defaultValue={showMockCredentials ? "admin@teacher.ai" : ""}
                     />
                   </div>
                   <div className="grid gap-2">
@@ -46,13 +76,15 @@ export default function LoginPage() {
                       type="password"
                       placeholder="Enter your password"
                       required
-                      defaultValue="123"
+                      defaultValue={showMockCredentials ? "admin123" : ""}
                     />
                   </div>
 
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Default admin credentials are pre-filled</p>
-                  </div>
+                  {showMockCredentials && (
+                    <div className="text-center">
+                      <p className="text-xs text-muted-foreground">Admin credentials are pre-filled for demo</p>
+                    </div>
+                  )}
 
                   <Button type="submit" className="w-full">
                     Sign In
