@@ -19,11 +19,11 @@ export default async function DashboardPage() {
       redirect("/auth/login")
     }
 
-    const isAdmin = mockUser.role === "admin"
+    const isAdminOrTeacher = mockUser.role === "admin" || mockUser.role === "teacher"
 
     return (
       <div className="min-h-screen bg-background">
-        {isAdmin ? <AdminDashboard user={mockUser} /> : <UserDashboard user={mockUser} />}
+        {isAdminOrTeacher ? <AdminDashboard user={mockUser} /> : <UserDashboard user={mockUser} />}
       </div>
     )
   }
@@ -39,11 +39,11 @@ export default async function DashboardPage() {
     // Get user profile to check role
     const { data: userProfile } = await supabase.from("users").select("role").eq("id", data.user.id).single()
 
-    const isAdmin = userProfile?.role === "admin"
+    const isAdminOrTeacher = userProfile?.role === "admin" || userProfile?.role === "teacher"
 
     return (
       <div className="min-h-screen bg-background">
-        {isAdmin ? <AdminDashboard user={data.user} /> : <UserDashboard user={data.user} />}
+        {isAdminOrTeacher ? <AdminDashboard user={data.user} /> : <UserDashboard user={data.user} />}
       </div>
     )
   } catch (error) {

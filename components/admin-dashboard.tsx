@@ -168,8 +168,8 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push("/")
+    const logoutAction = (await import("@/app/auth/actions")).logoutAction
+    await logoutAction()
   }
 
   if (loading) {
@@ -192,8 +192,12 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
             <div className="flex items-center gap-3">
               <GraduationCap className="h-8 w-8 text-primary" />
               <div>
-                <h1 className="text-2xl font-bold text-primary">Teacher AI Admin</h1>
-                <p className="text-sm text-muted-foreground">Welcome back, Administrator</p>
+                <h1 className="text-2xl font-bold text-primary">
+                  Teacher AI {user.role === "admin" ? "Admin" : "Dashboard"}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Welcome back, {user.role === "admin" ? "Administrator" : "Teacher"}
+                </p>
               </div>
             </div>
             <Button onClick={handleLogout} variant="outline" className="gap-2 bg-transparent">
